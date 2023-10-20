@@ -71,105 +71,76 @@ client.on("message", async (message) => {
 
   if (!message.body) return;
 
-  const messageContent = message.body.substring(1);
+  const messageContent = message.body;
 
-  if (message.body.startsWith("/")) {
-    if (!prevMessages[sender]) {
-      const userMessages = await prisma.user.findFirst({
-        where: { id: sender },
-        include: { messages: { take: 9 } },
+  if (!prevMessages[sender]) {
+    const userMessages = await prisma.user.findFirst({
+      where: { id: sender },
+      include: { messages: { take: 9 } },
+    });
+
+    if (!userMessages) {
+      client.sendMessage(
+        sender,
+        "Hello! 👋 \n\nI'm maxiphy's AI assistant. I'm here to help you navigate the ocean of books at the fair. Whether you're looking for a specific genre, a bestseller, or just something new, I can guide you. \n\nJust let me know what you're interested in!"
+      );
+
+      await prisma.user.create({
+        data: {
+          id: sender,
+          messages: { create: { content: messageContent } },
+        },
       });
 
-      if (!userMessages) {
+      const controlFn = debounce(() => {
+        delete prevMessages[sender];
         client.sendMessage(
           sender,
-          "Hello! 👋 \n\nI'm maxiphy's AI assistant. I'm here to help you navigate the ocean of books at the fair. Whether you're looking for a specific genre, a bestseller, or just something new, I can guide you. \n\nJust let me know what you're interested in!"
+          "Thank you for engaging with maxiphy's AI assistant! We hope you found the book you were looking for. \n\nIf you're interested in any of our services or have further questions, feel free to reach out to us at hello@maxiphy.com. \n\nHave a great day! 😊"
         );
+      });
 
-        await prisma.user.create({
-          data: {
-            id: sender,
-            messages: { create: { content: messageContent } },
-          },
-        });
+      controlFn();
 
-        const controlFn = debounce(() => {
-          delete prevMessages[sender];
-          client.sendMessage(
-            sender,
-            "Thank you for engaging with maxiphy's AI assistant! We hope you found the book you were looking for. \n\nIf you're interested in any of our services or have further questions, feel free to reach out to us at hello@maxiphy.com. \n\nHave a great day! 😊"
-          );
-        });
-
-        controlFn();
-
-        prevMessages[sender] = {
-          control: controlFn,
-          messages: [
-            ...(prevMessages?.[sender]?.messages || []),
-            {
-              role: "user",
-              content: messageContent,
-            },
-          ],
-        };
-
-        const { messages } = prevMessages[sender];
-
-        const generatedReply = await runCompletion([
-          ...messages.slice(0, messages.length - 1),
-          // instructionsMessage,
-          ...messages.slice(messages.length - 1),
-        ]);
-
-        client.sendMessage(sender, generatedReply ?? "");
-      } else {
-        const controlFn = debounce(() => {
-          delete prevMessages[sender];
-          client.sendMessage(
-            sender,
-            "Thank you for engaging with maxiphy's AI assistant! We hope you found the book you were looking for. \n\nIf you're interested in any of our services or have further questions, feel free to reach out to us at hello@maxiphy.com. \n\nHave a great day! 😊"
-          );
-        });
-
-        controlFn();
-
-        prevMessages[sender] = {
-          control: controlFn,
-          messages: [
-            ...(prevMessages?.[sender]?.messages || []),
-            ...userMessages?.messages?.map((e) => ({
-              role: "user" as const,
-              content: e.content || "",
-            })),
-            {
-              role: "user",
-              content: messageContent,
-            },
-          ],
-        };
-
-        const { messages } = prevMessages[sender];
-
-        const generatedReply = await runCompletion([
-          ...messages.slice(0, messages.length - 1),
-          // instructionsMessage,
-          ...messages.slice(messages.length - 1),
-        ]);
-
-        client.sendMessage(sender, generatedReply ?? "");
-
-        await prisma.user.update({
-          where: { id: sender },
-          data: { messages: { create: { content: messageContent } } },
-        });
-      }
-    } else {
-      prevMessages[sender].control();
       prevMessages[sender] = {
-        ...prevMessages[sender],
+        control: controlFn,
         messages: [
           ...(prevMessages?.[sender]?.messages || []),
+          {
+            role: "user",
+            content: messageContent,
+          },
+        ],
+      };
+
+      const { messages } = prevMessages[sender];
+
+      const generatedReply = await runCompletion([
+        ...messages.slice(0, messages.length - 1),
+        // instructionsMessage,
+        ...messages.slice(messages.length - 1),
+      ]);
+
+      client.sendMessage(sender, generatedReply ?? "");
+    } else {
+      const controlFn = debounce(() => {
+        delete prevMessages[sender];
+        client.sendMessage(
+          sender,
+          "Thank you for engaging with maxiphy's AI assistant! We hope you found the book you were looking for. \n\nIf you're interested in any of our services or have further questions, feel free to reach out to us at hello@maxiphy.com. \n\nHave a great day! 😊"
+        );
+      });
+
+      controlFn();
+
+      prevMessages[sender] = {
+        control: controlFn,
+        messages: [
+          ...(prevMessages?.[sender]?.messages || []),
+          ...userMessages?.messages?.map((e) => ({
+            role: "user" as const,
+            content: e.content || "",
+          })),
           {
             role: "user",
             content: messageContent,
@@ -192,12 +163,39 @@ client.on("message", async (message) => {
         data: { messages: { create: { content: messageContent } } },
       });
     }
+  } else {
+    prevMessages[sender].control();
+    prevMessages[sender] = {
+      ...prevMessages[sender],
+      messages: [
+        ...(prevMessages?.[sender]?.messages || []),
+        {
+          role: "user",
+          content: messageContent,
+        },
+      ],
+    };
 
-    // if (prevMessages[sender].length > 10)
-    //   prevMessages[sender] = prevMessages[sender].slice(1);
+    const { messages } = prevMessages[sender];
 
-    // prevMessages?.[sender]?.control();
+    const generatedReply = await runCompletion([
+      ...messages.slice(0, messages.length - 1),
+      // instructionsMessage,
+      ...messages.slice(messages.length - 1),
+    ]);
 
-    // runCompletion(prevMessages[sender]).then((result) => message.reply(result));
+    client.sendMessage(sender, generatedReply ?? "");
+
+    await prisma.user.update({
+      where: { id: sender },
+      data: { messages: { create: { content: messageContent } } },
+    });
   }
+
+  // if (prevMessages[sender].length > 10)
+  //   prevMessages[sender] = prevMessages[sender].slice(1);
+
+  // prevMessages?.[sender]?.control();
+
+  // runCompletion(prevMessages[sender]).then((result) => message.reply(result));
 });
