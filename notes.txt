@@ -1,0 +1,11 @@
+{
+  object: 'file',
+  id: 'file-3TIQqUCteh5ogiLxJ4vsJrjh',
+  purpose: 'fine-tune',
+  filename: 'fineTuneData.jsonl',
+  bytes: 41090,
+  created_at: 1697808233,
+  status: 'uploaded',
+  status_details: null
+}
+File ID file-3TIQqUCteh5ogiLxJ4vsJrjh
